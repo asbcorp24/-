@@ -56,8 +56,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path == '/api/upload':
             name = unquote(self.headers.get('X-Filename', ''))
             suffix = Path(name).suffix.lower()
-            if suffix not in {'.stl', '.png', '.jpg', '.jpeg', '.webp'}:
-                return self.send_json({'error': 'Допустимы STL, PNG, JPG, WEBP'}, 400)
+            if suffix not in {'.stl', '.png', '.jpg', '.jpeg', '.webp', '.mp3', '.wav', '.ogg', '.m4a', '.aac'}:
+                return self.send_json({'error': 'Допустимы STL, изображения и аудио MP3/WAV/OGG/M4A/AAC'}, 400)
             data = self.read_body(100 * 1024 * 1024)
             if data is None: return self.send_json({'error': 'Неверный размер файла (максимум 100 МБ)'}, 413)
             ASSETS.mkdir(parents=True, exist_ok=True)
@@ -81,6 +81,12 @@ class Handler(SimpleHTTPRequestHandler):
                 for p in [model['url'], *photos]:
                     if not isinstance(p, str) or not p.startswith('/projects/default/assets/') or not (ROOT / p.lstrip('/')).is_file():
                         return self.send_json({'error': 'Сначала загрузите файлы на сервер'}, 400)
+            music = obj.get('music') or {}
+            if not isinstance(music, dict): return self.send_json({'error': 'Неверные настройки музыки'}, 400)
+            audio_url = music.get('url')
+            if audio_url:
+                if not isinstance(audio_url, str) or not audio_url.startswith('/projects/default/assets/') or Path(audio_url).suffix.lower() not in {'.mp3','.wav','.ogg','.m4a','.aac'} or not (ROOT / audio_url.lstrip('/')).is_file():
+                    return self.send_json({'error': 'Музыкальный файл отсутствует на сервере'}, 400)
             DATA.mkdir(parents=True, exist_ok=True)
             temp = DATA / ('project-' + uuid.uuid4().hex + '.tmp')
             temp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding='utf-8')
