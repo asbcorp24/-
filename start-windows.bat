@@ -26,6 +26,15 @@ if not exist "server.py" (
   pause
   exit /b 1
 )
+if not exist "vendor\three\build\three.module.js" (
+  echo Installing Three.js locally for offline use...
+  %PYTHON% setup-three.py
+  if errorlevel 1 (
+    echo Failed to install Three.js. Check network access or copy vendor files manually.
+    pause
+    exit /b 1
+  )
+)
 echo Starting STL Cosmic Morph on http://127.0.0.1:8000/
 start "" "http://127.0.0.1:8000/"
 %PYTHON% server.py
