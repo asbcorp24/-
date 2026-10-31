@@ -34,7 +34,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not path.exists(): return self.send_json({'error': 'Проект ещё не сохранён'}, 404)
             try: return self.send_json(json.loads(path.read_text(encoding='utf-8')))
             except (OSError, ValueError): return self.send_json({'error': 'Повреждённый JSON'}, 500)
-        if urlsplit(self.path).path == '/': self.path = '/stl-morph-v15.html'
+        if urlsplit(self.path).path == '/': self.path = '/stl-morph-v16.html'
         return super().do_GET()
 
     def do_POST(self):
