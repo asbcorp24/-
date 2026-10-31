@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>STL Morph Studio</title>
+<style>
+body{margin:0;background:#10131c;color:#fff;font:15px system-ui}
+#ui{position:absolute;z-index:2;top:15px;left:15px;background:#202635ed;padding:18px;border-radius:14px;max-width:320px}
+label{display:block;margin:9px 0}input[type=range]{width:100%}
+button{background:#397cf5;color:white;border:0;border-radius:8px;padding:10px 14px;cursor:pointer}
+canvas{display:block}small{color:#bbc6d9}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="ui"><b>STL Morph Studio</b>
+<label>Модель A <input id="a" type="file" accept=".stl"></label>
+<label>Модель B <input id="b" type="file" accept=".stl"></label>
+<label>Превращение <span id="percent">0%</span><input id="mix" type="range" min="0" max="100" value="0"></label>
+<label>Скорость <input id="speed" type="range" min="1" max="10" value="4"></label>
+<button id="play">▶ Превратить</button>
+<p><small id="status">Загрузите две STL-модели. Вращайте сцену мышью или пальцем.</small></p></div>
+<script type="module">
+import * as THREE from 'three';
+import {STLLoader} from 'three/addons/loaders/STLLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {MeshSurfaceSampler} from 'three/addons/math/MeshSurfaceSampler.js';
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x10131c);
+const camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,.01,1000);camera.position.set(0,0,4);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+document.body.appendChild(renderer.domElement);
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;
+scene.add(new THREE.AmbientLight(0xffffff,1));
+const loader=new STLLoader(),models=[null,null],N=18000;
+let from=null,to=null,cloud=null,playing=false,progress=0,last=performance.now();
+const mix=document.getElementById('mix'),status=document.getElementById('status'),play=document.getElementById('play');
+function sample(source){
+ const g=source.clone();g.computeVertexNormals();g.computeBoundingBox();
+ const box=g.boundingBox,center=box.getCenter(new THREE.Vector3()),size=box.getSize(new THREE.Vector3());
+ const scale=2/Math.max(size.x,size.y,size.z,1e-9);
+ g.translate(-center.x,-center.y,-center.z);g.scale(scale,scale,scale);
+ const mesh=new THREE.Mesh(g,new THREE.MeshBasicMaterial());
+ const sampler=new MeshSurfaceSampler(mesh).build(),p=new Float32Array(N*3),v=new THREE.Vector3();
+ for(let i=0;i<N;i++){sampler.sample(v);p.set([v.x,v.y,v.z],i*3)}
+ mesh.material.dispose();g.dispose();return p;
+}
+function build(){
+ if(!models[0]||!models[1])return;
+ try{
+  from=sample(models[0]);to=sample(models[1]);
+  if(cloud){scene.remove(cloud);cloud.geometry.dispose();cloud.material.dispose()}
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.BufferAttribute(from.slice(),3));
+  cloud=new THREE.Points(geometry,new THREE.PointsMaterial({color:0x69c9ff,size:.012,sizeAttenuation:true}));
+  scene.add(cloud);playing=false;play.textContent='▶ Превратить';update(0);
+  status.textContent='Готово: 18 000 точек. Используйте ползунок или кнопку.';
+ }catch(e){status.textContent='Ошибка геометрии: '+e.message}
+}
+for(const [index,id] of [[0,'a'],[1,'b']]){
+ document.getElementById(id).addEventListener('change',async e=>{
+  const file=e.target.files[0];if(!file)return;
+  try{models[index]=loader.parse(await file.arrayBuffer());build()}
+  catch(err){status.textContent='Ошибка STL: '+err.message}
+ });
+}
+function update(t){
+ progress=t;mix.value=Math.round(t*100);
+ document.getElementById('percent').textContent=Math.round(t*100)+'%';
+ if(!cloud)return;
+ const p=cloud.geometry.attributes.position.array,eased=t*t*(3-2*t);
+ for(let i=0;i<p.length;i++)p[i]=from[i]+(to[i]-from[i])*eased;
+ cloud.geometry.attributes.position.needsUpdate=true;
+}
+mix.addEventListener('input',()=>{playing=false;play.textContent='▶ Превратить';update(Number(mix.value)/100)});
+play.onclick=()=>{
+ if(!cloud){status.textContent='Сначала загрузите две STL-модели';return}
+ if(progress>=1)update(0);
+ playing=!playing;play.textContent=playing?'⏸ Пауза':'▶ Превратить';
+};
+function frame(now){
+ requestAnimationFrame(frame);const dt=Math.min((now-last)/1000,.1);last=now;
+ if(playing){
+  update(Math.min(1,progress+dt/(11-Number(document.getElementById('speed').value))));
+  if(progress>=1){playing=false;play.textContent='▶ Повторить'}
+ }
+ controls.update();renderer.render(scene,camera);
+}
+requestAnimationFrame(frame);
+addEventListener('resize',()=>{
+ camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);
+});
+</script></body></html>
