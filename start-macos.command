@@ -17,6 +17,10 @@ if [[ -z "$PYTHON" ]]; then
   read -r -p "Press Enter to close..."
   exit 1
 fi
+if [[ ! -f vendor/three/build/three.module.js ]]; then
+  echo "Installing Three.js locally for offline use..."
+  "$PYTHON" setup-three.py || { echo "Failed to install Three.js."; read -r -p "Press Enter to close..."; exit 1; }
+fi
 echo "Starting STL Cosmic Morph: http://127.0.0.1:8000/"
 (sleep 1; open "http://127.0.0.1:8000/") &
 "$PYTHON" server.py
