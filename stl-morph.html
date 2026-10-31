@@ -17,6 +17,7 @@ canvas{display:block}small{color:#bbc6d9}
 <label>Модель A <input id="a" type="file" accept=".stl"></label>
 <label>Модель B <input id="b" type="file" accept=".stl"></label>
 <label>Превращение <span id="percent">0%</span><input id="mix" type="range" min="0" max="100" value="0"></label>
+<label>Цвет туннеля <input id="color" type="color" value="#32cfff"></label>
 <label>Скорость <input id="speed" type="range" min="1" max="10" value="4"></label>
 <button id="play">▶ Превратить</button>
 <p><small id="status">Загрузите две STL-модели. Вращайте сцену мышью или пальцем.</small></p></div>
@@ -34,6 +35,13 @@ const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamp
 scene.add(new THREE.AmbientLight(0xffffff,1));
 const loader=new STLLoader(),models=[null,null],N=18000;
 let from=null,to=null,cloud=null,playing=false,progress=0,last=performance.now();
+const tunnelGroup=new THREE.Group();scene.add(tunnelGroup);
+const tunnelGeometry=new THREE.CylinderGeometry(1.5,1.5,18,64,100,true);tunnelGeometry.rotateX(Math.PI/2);
+const tunnel=new THREE.Mesh(tunnelGeometry,new THREE.MeshBasicMaterial({color:0x32cfff,side:THREE.BackSide,wireframe:true,transparent:true,opacity:0}));tunnel.position.z=-5;tunnelGroup.add(tunnel);
+const rings=[];for(let i=0;i<28;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1.47,.012,6,72),new THREE.MeshBasicMaterial({color:0xa5eaff,transparent:true,opacity:0}));ring.position.z=-13+i*.65;tunnelGroup.add(ring);rings.push(ring)}
+const smooth=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x)};
+const bell=(x,a,b,c,d)=>smooth((x-a)/(b-a))*(1-smooth((x-c)/(d-c)));
+
 const mix=document.getElementById('mix'),status=document.getElementById('status'),play=document.getElementById('play');
 function sample(source){
  const g=source.clone();g.computeVertexNormals();g.computeBoundingBox();
@@ -68,18 +76,45 @@ function update(t){
  progress=t;mix.value=Math.round(t*100);
  document.getElementById('percent').textContent=Math.round(t*100)+'%';
  if(!cloud)return;
- const p=cloud.geometry.attributes.position.array,eased=t*t*(3-2*t);
- for(let i=0;i<p.length;i++)p[i]=from[i]+(to[i]-from[i])*eased;
+ const entering=smooth(t/.23),leaving=smooth((t-.77)/.23);
+ const tunnelAmount=bell(t,.12,.28,.74,.91);
+ const target=smooth((t-.72)/.28);
+ const p=cloud.geometry.attributes.position.array;
+ for(let i=0;i<p.length;i+=3){
+  const a=i/3,theta=a*2.399963229728653;
+  const z=-1.5+3*a/N;
+  const r=1.5;
+  const tunnelX=Math.cos(theta)*r,tunnelY=Math.sin(theta)*r;
+  const fx=from[i]*(1-entering)+tunnelX*entering;
+  const fy=from[i+1]*(1-entering)+tunnelY*entering;
+  const fz=from[i+2]*(1-entering)+z*entering;
+  p[i]=fx*(1-leaving)+to[i]*leaving;
+  p[i+1]=fy*(1-leaving)+to[i+1]*leaving;
+  p[i+2]=fz*(1-leaving)+to[i+2]*leaving;
+ }
  cloud.geometry.attributes.position.needsUpdate=true;
+ cloud.material.opacity=1-tunnelAmount;
+ cloud.material.transparent=true;
+ tunnel.material.opacity=.28*tunnelAmount;
+ for(const ring of rings)ring.material.opacity=.7*tunnelAmount;
+ tunnel.material.color.set(document.getElementById('color').value);
+ const travel=smooth((t-.25)/.5);
+ camera.position.set(0,0,4-15*travel+15*smooth((t-.76)/.2));
+ camera.fov=45+30*bell(t,.2,.35,.68,.85);camera.updateProjectionMatrix();
+ controls.enabled=t<.12||t>.96;
+ if(!controls.enabled)controls.target.set(0,0,camera.position.z-2);
+ else controls.target.set(0,0,0);
+ status.textContent=t<.2?'Модель раскрывается':t<.75?'Пролёт сквозь туннель':t<1?'Сборка новой модели':'Превращение завершено';
 }
 mix.addEventListener('input',()=>{playing=false;play.textContent='▶ Превратить';update(Number(mix.value)/100)});
 play.onclick=()=>{
  if(!cloud){status.textContent='Сначала загрузите две STL-модели';return}
- if(progress>=1)update(0);
+ if(progress>=1){camera.position.set(0,0,4);controls.enabled=true;controls.target.set(0,0,0);update(0)}
  playing=!playing;play.textContent=playing?'⏸ Пауза':'▶ Превратить';
 };
 function frame(now){
  requestAnimationFrame(frame);const dt=Math.min((now-last)/1000,.1);last=now;
+ tunnelGroup.rotation.z+=dt*.15;for(const ring of rings)ring.rotation.z+=dt*.2;
  if(playing){
   update(Math.min(1,progress+dt/(11-Number(document.getElementById('speed').value))));
   if(progress>=1){playing=false;play.textContent='▶ Повторить'}
