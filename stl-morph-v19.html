@@ -252,10 +252,9 @@ function setMusicSource(url,name){
 }
 $('musicFile').onchange=e=>{
  const file=e.target.files[0];if(!file)return;
- musicFile=file;musicBlobUrl=URL.createObjectURL(file);
- setMusicSource(musicBlobUrl,file.name);
- // setMusicSource clears the previous blob URL; keep the new one for cleanup.
- musicBlobUrl=musicAudio.src.startsWith('blob:')?musicAudio.src:null;
+ musicFile=file;const url=URL.createObjectURL(file);
+ setMusicSource(url,file.name);
+ musicBlobUrl=url;
  e.target.value='';
 };
 $('musicVolume').oninput=()=>{
@@ -294,7 +293,7 @@ async function projectData(upload=false){
   if(!item.source)throw Error('Модель не загружена на сервер: '+item.name);
   models.push({url:item.source,name:item.name,title:item.title,rotation:[item.rotation.x,item.rotation.y,item.rotation.z],spinAxis:item.spinAxis,spinDirection:item.spinDirection,photos});
  }
- if(upload&&musicFile){musicSource=await serverUpload(musicFile);musicFile=null;setMusicSource(musicSource,musicName)}
+ if(upload&&musicFile){const uploaded=await serverUpload(musicFile);musicFile=null;setMusicSource(uploaded,musicName)}
  if(musicFile&&!upload)throw Error('Сначала сохраните музыку на сервер');
  return {version:1,settings:Object.fromEntries(settingIds.map(id=>[id,val(id)])),models,
  music:{url:musicSource?.startsWith('blob:')?null:musicSource,name:musicName,volume:musicAudio.volume,loop:musicAudio.loop,sync:$('musicSync').checked}};
