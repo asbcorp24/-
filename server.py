@@ -8,7 +8,16 @@ import argparse, json, os, uuid, re
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / 'projects' / 'default'
 ASSETS = DATA / 'assets'
-VERSION_RE = re.compile(r'^stl-morph-v(\\d+)\\.html
+VERSION_RE = re.compile(r'^stl-morph-v(\d+)\.html$')
+
+def latest_html():
+    candidates = []
+    for file in ROOT.iterdir():
+        if file.is_file():
+            match = VERSION_RE.fullmatch(file.name)
+            if match:
+                candidates.append((int(match.group(1)), file.name))
+    return max(candidates)[1] if candidates else None
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
