@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>STL Morph Studio</title>
+<style>
+body{margin:0;background:#10131c;color:#fff;font:15px system-ui}
+#ui{position:absolute;z-index:2;top:15px;left:15px;background:#202635ed;padding:18px;border-radius:14px;max-width:320px}
+label{display:block;margin:9px 0}input[type=range]{width:100%}
+button{background:#397cf5;color:white;border:0;border-radius:8px;padding:10px 14px;cursor:pointer}
+canvas{display:block}small{color:#bbc6d9}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="ui"><b>STL Morph Studio — Wireframe v5</b>
+<label>Модель A <input id="a" type="file" accept=".stl"></label>
+<label>Модель B <input id="b" type="file" accept=".stl"></label>
+<label>Превращение <span id="percent">0%</span><input id="mix" type="range" min="0" max="100" value="0"></label>
+<label>Цвет туннеля <input id="color" type="color" value="#32cfff"></label>
+<label>Изгиб туннеля <input id="bend" type="range" min="0" max="2.5" step=".1" value="1.2"></label>
+<label>Bloom <input id="bloom" type="range" min="0" max="3" step=".1" value="1.35"></label>
+<label>Скорость <input id="speed" type="range" min="1" max="10" value="4"></label>
+<button id="play">▶ Превратить</button>
+<p><small id="status">Загрузите две STL-модели. Вращайте сцену мышью или пальцем.</small></p></div>
+<script type="module">
+import * as THREE from 'three';
+import {STLLoader} from 'three/addons/loaders/STLLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
+import {MeshSurfaceSampler} from 'three/addons/math/MeshSurfaceSampler.js';
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x10131c);
+const camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,.01,1000);camera.position.set(0,0,4);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+document.body.appendChild(renderer.domElement);
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+const composer=new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,camera));
+const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),1.35,.55,.12);
+composer.addPass(bloom);composer.addPass(new OutputPass());
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;
+scene.add(new THREE.AmbientLight(0xffffff,1));
+const loader=new STLLoader(),models=[null,null],N=18000;
+let from=null,to=null,cloud=null,playing=false,progress=0,last=performance.now();
+let firstMesh=null,secondMesh=null,shards=null,formation=null;
+const tunnelGroup=new THREE.Group();scene.add(tunnelGroup);
+const tunnelGeometry=new THREE.CylinderGeometry(1.5,1.5,18,64,100,true);tunnelGeometry.rotateX(Math.PI/2);
+const wallMaterial=new THREE.MeshBasicMaterial({color:0x071626,side:THREE.BackSide,transparent:true,opacity:0,depthWrite:false});
+const wall=new THREE.Mesh(tunnelGeometry,wallMaterial);wall.position.z=-5;tunnelGroup.add(wall);
+const tunnel=new THREE.LineSegments(new THREE.WireframeGeometry(tunnelGeometry),new THREE.LineBasicMaterial({color:0x32cfff,transparent:true,opacity:0,depthWrite:false}));
+tunnel.position.z=-5;tunnelGroup.add(tunnel);
+const tunnelBase=tunnelGeometry.attributes.position.array.slice();
+function curve(z,amp){
+ const u=(z+9)/18;
+ return [amp*(Math.sin(u*7.2)*.75+Math.sin(u*15.4+1)*.25),amp*(Math.cos(u*5.8+.6)*.7+Math.sin(u*12.8)*.3)];
+}
+function deformTunnel(amp){
+ const positions=tunnelGeometry.attributes.position;
+ for(let i=0;i<positions.count;i++){
+  const k=i*3,z=tunnelBase[k+2],c=curve(z,amp);
+  positions.setXYZ(i,tunnelBase[k]+c[0],tunnelBase[k+1]+c[1],z);
+ }
+ positions.needsUpdate=true;tunnelGeometry.computeVertexNormals();
+ tunnel.geometry.dispose();tunnel.geometry=new THREE.WireframeGeometry(tunnelGeometry);
+ for(let i=0;i<rings.length;i++){
+  const z=-13+i*.65,c=curve(z+5,amp);
+  rings[i].position.set(c[0],c[1],z);
+  const c2=curve(z+5+.03,amp);
+  rings[i].rotation.set(-(c2[1]-c[1])/.03,(c2[0]-c[0])/.03,0);
+ }
+}
+const rings=[];for(let i=0;i<28;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1.47,.012,6,72),new THREE.MeshBasicMaterial({color:0xa5eaff,transparent:true,opacity:0}));ring.position.z=-13+i*.65;tunnelGroup.add(ring);rings.push(ring)}
+const smooth=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x)};
+const bell=(x,a,b,c,d)=>smooth((x-a)/(b-a))*(1-smooth((x-c)/(d-c)));
+
+const mix=document.getElementById('mix'),status=document.getElementById('status'),play=document.getElementById('play');
+function sample(source){
+ const g=source.clone();g.computeVertexNormals();g.computeBoundingBox();
+ const box=g.boundingBox,center=box.getCenter(new THREE.Vector3()),size=box.getSize(new THREE.Vector3());
+ const scale=2/Math.max(size.x,size.y,size.z,1e-9);
+ g.translate(-center.x,-center.y,-center.z);g.scale(scale,scale,scale);
+ const mesh=new THREE.Mesh(g,new THREE.MeshBasicMaterial());
+ const sampler=new MeshSurfaceSampler(mesh).build(),p=new Float32Array(N*3),v=new THREE.Vector3();
+ for(let i=0;i<N;i++){sampler.sample(v);p.set([v.x,v.y,v.z],i*3)}
+ mesh.material.dispose();g.dispose();return p;
+}
+function normalizedMesh(source,color){
+ const g=source.clone();g.computeVertexNormals();g.computeBoundingBox();
+ const center=g.boundingBox.getCenter(new THREE.Vector3()),size=g.boundingBox.getSize(new THREE.Vector3());
+ g.translate(-center.x,-center.y,-center.z);const scale=2/Math.max(size.x,size.y,size.z,1e-8);g.scale(scale,scale,scale);
+ return new THREE.Mesh(g,new THREE.MeshBasicMaterial({color,wireframe:true,transparent:true,opacity:1,depthWrite:false}));
+}
+function clearMesh(m){if(m){scene.remove(m);m.geometry.dispose();m.material.dispose()}}
+const shardCount=1600;
+function createShards(){
+ if(shards){scene.remove(shards);shards.geometry.dispose();shards.material.dispose()}
+ const pos=new Float32Array(shardCount*3),sizes=new Float32Array(shardCount);
+ for(let i=0;i<shardCount;i++){const a=i*2.39996323,z=-12+12*(i/shardCount);pos.set([Math.cos(a)*1.5,Math.sin(a)*1.5,z],i*3);sizes[i]=Math.random()}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+ shards=new THREE.Points(g,new THREE.PointsMaterial({color:0x7bdfff,size:.025,transparent:true,opacity:0,depthWrite:false}));
+ shards.userData.base=pos.slice();shards.userData.seed=sizes;scene.add(shards);
+}
+function createFormation(){
+ if(formation){scene.remove(formation);formation.geometry.dispose();formation.material.dispose()}
+ const geometry=new THREE.BufferGeometry();
+ geometry.setAttribute('position',new THREE.BufferAttribute(from.slice(),3));
+ formation=new THREE.Points(geometry,new THREE.PointsMaterial({color:0x55d9ff,size:.017,transparent:true,opacity:0,depthWrite:false}));
+ scene.add(formation);
+}
+function build(){
+ if(!models[0]||!models[1])return;
+ try{
+  from=sample(models[0]);to=sample(models[1]);
+  clearMesh(firstMesh);clearMesh(secondMesh);
+  firstMesh=normalizedMesh(models[0],0x8ecbff);secondMesh=normalizedMesh(models[1],0xffcf9b);
+  scene.add(firstMesh,secondMesh);createShards();createFormation();
+  if(cloud){scene.remove(cloud);cloud.geometry.dispose();cloud.material.dispose()}
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.BufferAttribute(from.slice(),3));
+  cloud=new THREE.Points(geometry,new THREE.PointsMaterial({color:0x69c9ff,size:.012,sizeAttenuation:true}));
+  scene.add(cloud);playing=false;play.textContent='▶ Превратить';update(0);
+  status.textContent='Готово: 18 000 точек. Используйте ползунок или кнопку.';
+ }catch(e){status.textContent='Ошибка геометрии: '+e.message}
+}
+for(const [index,id] of [[0,'a'],[1,'b']]){
+ document.getElementById(id).addEventListener('change',async e=>{
+  const file=e.target.files[0];if(!file)return;
+  try{models[index]=loader.parse(await file.arrayBuffer());build()}
+  catch(err){status.textContent='Ошибка STL: '+err.message}
+ });
+}
+function update(t){
+ progress=t;mix.value=Math.round(t*100);
+ document.getElementById('percent').textContent=Math.round(t*100)+'%';
+ if(!firstMesh||!secondMesh)return;
+ const bend=Number(document.getElementById('bend').value);
+ deformTunnel(bend);
+ const unfold=smooth((t-.03)/.25);
+ const flight=smooth((t-.25)/.47);
+ const collapse=smooth((t-.72)/.18);
+ const shatter=bell(t,.73,.83,.92,.99);
+ const finish=smooth((t-.83)/.17);
+ const c=curve(-12+5,bend);
+ const camZ=4-14*flight+14*smooth((t-.83)/.17);
+ const path=curve(camZ+5,bend);
+ const inside=bell(t,.23,.32,.75,.88);
+ camera.position.set(path[0]*inside,path[1]*inside,camZ);
+ camera.fov=45+16*bell(t,.22,.32,.72,.86);camera.updateProjectionMatrix();
+ controls.enabled=t<.05||t>.995;
+ if(!controls.enabled){
+  const look=curve(camZ+3,bend);
+  controls.target.set(look[0]*inside,look[1]*inside,camZ-3);
+ }else controls.target.set(0,0,0);
+ firstMesh.visible=t<.18;
+ firstMesh.scale.setScalar(1+.22*unfold);
+ firstMesh.material.opacity=1-smooth((t-.04)/.12);
+ firstMesh.rotation.y=t*.6;
+ secondMesh.visible=t>.48;
+ // The destination object remains fixed at the far end until the tunnel bursts.
+ secondMesh.position.set(c[0]*(1-finish),c[1]*(1-finish),-13*(1-finish));
+ secondMesh.scale.setScalar(.7+1.65*finish);
+ secondMesh.material.opacity=smooth((t-.48)/.18);
+ secondMesh.rotation.y=finish*.7;
+ // Points leave the actual STL surface and reorganize into the tunnel's curved wall.
+ const formationFade=bell(t,.055,.12,.19,.31);
+ formation.material.opacity=formationFade;
+ const forming=smooth((t-.06)/.20);
+ const fp=formation.geometry.attributes.position.array;
+ for(let i=0;i<N;i++){
+  const k=i*3,u=i/N,angle=i*2.3999632297,z=-13+18*u;
+  const center=curve(z+5,bend);
+  const tx=center[0]+Math.cos(angle)*1.5;
+  const ty=center[1]+Math.sin(angle)*1.5;
+  fp[k]=from[k]+(tx-from[k])*forming;
+  fp[k+1]=from[k+1]+(ty-from[k+1])*forming;
+  fp[k+2]=from[k+2]+(z-from[k+2])*forming;
+ }
+ formation.geometry.attributes.position.needsUpdate=true;
+ const tunnelAmount=smooth((t-.16)/.13)*(1-collapse);
+ wall.material.opacity=.97*tunnelAmount;
+ tunnel.material.opacity=.9*tunnelAmount;
+ for(const ring of rings)ring.material.opacity=.75*tunnelAmount;
+ const col=document.getElementById('color').value;
+ tunnel.material.color.set(col);
+ shards.material.color.set(col);
+ bloom.strength=Number(document.getElementById('bloom').value);
+ shards.material.opacity=shatter;
+ const p=shards.geometry.attributes.position.array,base=shards.userData.base,seeds=shards.userData.seed;
+ for(let i=0;i<shardCount;i++){
+  const k=i*3,angle=i*2.39996323,spread=collapse*(2+seeds[i]*8);
+  p[k]=base[k]+Math.cos(angle)*spread;
+  p[k+1]=base[k+1]+Math.sin(angle)*spread;
+  p[k+2]=base[k+2]+collapse*(seeds[i]-.5)*5;
+ }
+ shards.geometry.attributes.position.needsUpdate=true;
+ if(cloud)cloud.visible=false;
+ status.textContent=t<.28?'Фигура распадается и формирует туннель':t<.72?'Полёт: впереди новая фигура':t<.9?'Туннель разлетается':'Новая фигура увеличивается';
+}
+mix.addEventListener('input',()=>{playing=false;play.textContent='▶ Превратить';update(Number(mix.value)/100)});
+play.onclick=()=>{
+ if(!cloud){status.textContent='Сначала загрузите две STL-модели';return}
+ if(progress>=1){camera.position.set(0,0,4);controls.enabled=true;controls.target.set(0,0,0);update(0)}
+ playing=!playing;play.textContent=playing?'⏸ Пауза':'▶ Превратить';
+};
+function frame(now){
+ requestAnimationFrame(frame);const dt=Math.min((now-last)/1000,.1);last=now;
+ for(const ring of rings)ring.rotateZ(dt*.2);
+ if(playing){
+  update(Math.min(1,progress+dt/(11-Number(document.getElementById('speed').value))));
+  if(progress>=1){playing=false;play.textContent='▶ Повторить'}
+ }
+ controls.update();composer.render();
+}
+requestAnimationFrame(frame);
+addEventListener('resize',()=>{
+ camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight);
+});
+</script></body></html>
