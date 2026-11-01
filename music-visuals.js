@@ -2,6 +2,7 @@
 // All objects live inside Three.js, so canvas MediaRecorder captures them.
 export function createMusicVisuals(THREE,scene,bloomLayer){
  const count=700,positions=new Float32Array(count*3),colors=new Float32Array(count*3),velocities=new Float32Array(count*3),ages=new Float32Array(count);
+ for(let i=0;i<count;i++)positions[i*3+2]=-1000;
  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));geo.setAttribute('color',new THREE.BufferAttribute(colors,3));
  const particles=new THREE.Points(geo,new THREE.PointsMaterial({size:.035,vertexColors:true,transparent:true,opacity:.95,depthWrite:false,blending:THREE.AdditiveBlending}));particles.layers.enable(bloomLayer);scene.add(particles);
  const rings=[];for(let i=0;i<12;i++){const mesh=new THREE.Mesh(new THREE.TorusGeometry(1.45+i*.065,.008,4,96),new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL(i/12,.95,.58),transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}));mesh.layers.enable(bloomLayer);scene.add(mesh);rings.push(mesh)}
