@@ -466,7 +466,7 @@ $('musicLoop').onchange=()=>musicAudio.loop=$('musicLoop').checked;
 $('musicLoop').onchange();
 $('musicPlay').onclick=async()=>{
  if(!musicSource){$('status').textContent='Сначала выберите музыкальный файл';return}
- try{await musicAudio.play()}catch(e){$('status').textContent='Не удалось включить музыку: '+e.message}
+ try{setupAudioCapture();await audioContext.resume();await musicAudio.play()}catch(e){$('status').textContent='Не удалось включить музыку: '+e.message}
 };
 $('musicPause').onclick=()=>musicAudio.pause();
 $('musicRemove').onclick=()=>{
@@ -474,7 +474,7 @@ $('musicRemove').onclick=()=>{
 };
 async function playMusicIfSynced(){
  if(!$('musicSync').checked||!musicSource)return;
- try{await musicAudio.play()}catch(e){$('status').textContent='Для музыки нажмите ▶ Музыка'}
+ try{setupAudioCapture();await audioContext.resume();await musicAudio.play()}catch(e){$('status').textContent='Для музыки нажмите ▶ Музыка'}
 }
 const serverUpload=async(file)=>{
  const response=await fetch(API+'/upload',{method:'POST',headers:{'X-Filename':encodeURIComponent(file.name),'Content-Type':'application/octet-stream'},body:file});
@@ -587,7 +587,7 @@ const fxIds=['fxParticles','fxRings','fxTunnel','fxWaves','fxBeat'];
 const fxPresets={calm:{fxParticles:false,fxRings:true,fxTunnel:false,fxWaves:true,fxBeat:true,fxAmount:45},cosmos:{fxParticles:true,fxRings:true,fxTunnel:true,fxWaves:true,fxBeat:true,fxAmount:100},disco:{fxParticles:true,fxRings:true,fxTunnel:true,fxWaves:true,fxBeat:true,fxAmount:170}};
 $('musicPreset').onchange=()=>{const p=fxPresets[$('musicPreset').value];if(!p)return;for(const id of fxIds)$(id).checked=p[id];$('fxAmount').value=p.fxAmount};
 for(const id of [...fxIds,'fxAmount'])$(id).addEventListener('input',()=>{$('musicPreset').value='custom'});
-function musicFxSettings(){return {enabled:$('musicReactive').checked,particles:$('fxParticles').checked,rings:$('fxRings').checked,tunnel:$('fxTunnel').checked,waves:$('fxWaves').checked,amount:Number($('fxAmount').value)}}
+function musicFxSettings(){return {enabled:$('musicReactive').checked&&!musicAudio.paused&&!!audioAnalyser,particles:$('fxParticles').checked,rings:$('fxRings').checked,tunnel:$('fxTunnel').checked,waves:$('fxWaves').checked,amount:Number($('fxAmount').value)}}
 const pgeo=new THREE.BufferGeometry();pgeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(30000),3));
 const formation=new THREE.Points(pgeo,new THREE.PointsMaterial({color:0x72edff,size:.022,transparent:true,opacity:0,depthWrite:false}));formation.layers.enable(BLOOM_LAYER);scene.add(formation);
 const fragments=new THREE.Points(pgeo.clone(),new THREE.PointsMaterial({color:0xa6eaff,size:.045,transparent:true,opacity:0,depthWrite:false}));fragments.layers.enable(BLOOM_LAYER);scene.add(fragments);
