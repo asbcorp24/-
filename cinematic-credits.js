@@ -2,6 +2,10 @@
 export function createCinematicCredits(THREE,camera){
  const group=new THREE.Group();camera.add(group);group.visible=false;
  const layers=[];let cache='';
+ const backdrop=new THREE.Mesh(new THREE.PlaneGeometry(6.3,2.15),new THREE.MeshBasicMaterial({color:0x030814,transparent:true,opacity:.85,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide}));
+ backdrop.position.z=-.57;backdrop.renderOrder=999;group.add(backdrop);
+ const frame=new THREE.Mesh(new THREE.PlaneGeometry(6.38,2.23),new THREE.MeshBasicMaterial({color:0x22658d,transparent:true,opacity:.38,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide}));
+ frame.position.z=-.59;frame.renderOrder=998;group.add(frame);
  for(let i=0;i<8;i++){
   const canvas=document.createElement('canvas');canvas.width=2048;canvas.height=512;
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
@@ -31,6 +35,7 @@ export function createCinematicCredits(THREE,camera){
   group.position.set(0,mode==='rise'?-strength*1.6*motion:Math.sin(time*.5)*.06*strength,-5-(mode==='fly'?strength*6*motion:strength*.7*motion));
   group.rotation.set(mode==='rise'?strength*.2*motion:0,mode==='orbit'?strength*.85*motion:Math.sin(time*.3)*.03*strength,0);
   group.scale.setScalar(1+Math.sin(time*.8)*.045*strength);
+  backdrop.material.opacity=.85*enter*exit;frame.material.opacity=.38*enter*exit;
   layers.forEach((layer,i)=>{layer.material.opacity=enter*exit*(i===0?1:i===7?.4:.2);layer.mesh.position.x=Math.sin(time*.7+i*.2)*strength*.015});
  }
  return {render,hide,group};
